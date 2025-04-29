@@ -1,4 +1,4 @@
-# Copyright 2025 Google LLC
+# Copyright 2024 Google LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,49 +13,39 @@
 # limitations under the License.
 
 from data_ingestion_pipeline.components.ingest_data import ingest_data
-from data_ingestion_pipeline.components.process_data import process_data
+from data_ingestion_pipeline.components.confluence_loader import load_confluence_data
 from kfp import dsl
 
 
-@dsl.pipeline(description="A pipeline to run ingestion of new data into the datastore")
+@dsl.pipeline(description="A pipeline to run ingestion of Confluence data into the datastore")
 def pipeline(
     project_id: str,
     location: str,
-    is_incremental: bool = True,
-    look_back_days: int = 1,
-    chunk_size: int = 1500,
-    chunk_overlap: int = 20,
-    destination_table: str = "incremental_questions_embeddings",
-    deduped_table: str = "questions_embeddings",
-    destination_dataset: str = "{{cookiecutter.project_name | replace('-', '_')}}_stackoverflow_data",
-{%- if cookiecutter.datastore_type == "vertex_ai_search" %}
+    confluence_domain: str,
+    confluence_email: str,
+    confluence_token: str,
+    page_ids: list,
+    chunk_size: int = 1000,
+    chunk_overlap: int = 200,
     data_store_region: str = "",
     data_store_id: str = "",
-{%- elif cookiecutter.datastore_type == "vertex_ai_vector_search" %}
     vector_search_index: str = "",
     vector_search_index_endpoint: str = "",
     vector_search_data_bucket_name: str = "",
     ingestion_batch_size: int = 1000,
-{%- endif %}
 ) -> None:
-    """Processes data and ingests it into a datastore for RAG Retrieval"""
+    """Processes Confluence data and ingests it into a datastore for RAG Retrieval"""
 
-    # Process the data and generate embeddings
-    processed_data = process_data(
-        project_id=project_id,
-        schedule_time=dsl.PIPELINE_JOB_SCHEDULE_TIME_UTC_PLACEHOLDER,
-        is_incremental=is_incremental,
-        look_back_days=look_back_days,
+    # Load and process Confluence data
+    processed_data = load_confluence_data(
+        confluence_domain=confluence_domain,
+        confluence_email=confluence_email,
+        confluence_token=confluence_token,
+        page_ids=page_ids,
         chunk_size=chunk_size,
         chunk_overlap=chunk_overlap,
-        destination_dataset=destination_dataset,
-        destination_table=destination_table,
-        deduped_table=deduped_table,
-        location=location,
-{%- if cookiecutter.datastore_type == "vertex_ai_search" %}
-        embedding_column="embedding",{% endif %}
     ).set_retry(num_retries=2)
-{% if cookiecutter.datastore_type == "vertex_ai_search" %}
+
     # Ingest the processed data into Vertex AI Search datastore
     ingest_data(
         project_id=project_id,
@@ -64,7 +54,7 @@ def pipeline(
         data_store_id=data_store_id,
         embedding_column="embedding",
     ).set_retry(num_retries=2)
-{% elif cookiecutter.datastore_type == "vertex_ai_vector_search" %}
+
     # Ingest the processed data into Vertex AI Vector Search
     ingest_data(
         project_id=project_id,
@@ -75,7 +65,6 @@ def pipeline(
         input_table=processed_data.output,
         schedule_time=dsl.PIPELINE_JOB_SCHEDULE_TIME_UTC_PLACEHOLDER,
         is_incremental=False,
-        look_back_days=look_back_days,
+        look_back_days=1,
         ingestion_batch_size=ingestion_batch_size,
     ).set_retry(num_retries=2)
-{% endif %}
