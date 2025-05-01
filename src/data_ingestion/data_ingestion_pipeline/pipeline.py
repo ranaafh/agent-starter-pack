@@ -21,6 +21,10 @@ from kfp import dsl
 def pipeline(
     project_id: str,
     location: str,
+    confluence_domain: str,
+    confluence_email: str,
+    confluence_token: str,
+    confluence_page_ids: str,
     is_incremental: bool = True,
     look_back_days: int = 1,
     chunk_size: int = 1500,
@@ -44,6 +48,10 @@ def pipeline(
     processed_data = process_data(
         project_id=project_id,
         schedule_time=dsl.PIPELINE_JOB_SCHEDULE_TIME_UTC_PLACEHOLDER,
+        confluence_domain=confluence_domain,
+        confluence_email=confluence_email,
+        confluence_token=confluence_token,
+        confluence_page_ids=confluence_page_ids,
         is_incremental=is_incremental,
         look_back_days=look_back_days,
         chunk_size=chunk_size,
