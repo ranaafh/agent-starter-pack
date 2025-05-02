@@ -31,21 +31,14 @@ def pipeline(
     chunk_overlap: int = 20,
     destination_table: str = "incremental_questions_embeddings",
     deduped_table: str = "questions_embeddings",
-    destination_dataset: str = "{{cookiecutter.project_name | replace('-', '_')}}_stackoverflow_data",
-{%- if cookiecutter.datastore_type == "vertex_ai_search" %}
+    destination_dataset: str = "confluence_data",
     data_store_region: str = "",
     data_store_id: str = "",
-{%- elif cookiecutter.datastore_type == "vertex_ai_vector_search" %}
-    vector_search_index: str = "",
-    vector_search_index_endpoint: str = "",
-    vector_search_data_bucket_name: str = "",
-    ingestion_batch_size: int = 1000,
-{%- endif %}
 ) -> None:
     """Processes data and ingests it into a datastore for RAG Retrieval"""
 
     # Process the data and generate embeddings
-    processed_data = process_data(
+    process_data_task = process_data(
         project_id=project_id,
         schedule_time=dsl.PIPELINE_JOB_SCHEDULE_TIME_UTC_PLACEHOLDER,
         confluence_domain=confluence_domain,
@@ -60,30 +53,14 @@ def pipeline(
         destination_table=destination_table,
         deduped_table=deduped_table,
         location=location,
-{%- if cookiecutter.datastore_type == "vertex_ai_search" %}
-        embedding_column="embedding",{% endif %}
-    ).set_retry(num_retries=2)
-{% if cookiecutter.datastore_type == "vertex_ai_search" %}
+        embedding_column="embedding",
+    ).set_retry(num_retries=2).set_env_variable("PIP_DISABLE_PIP_VERSION_CHECK", "1")
+
     # Ingest the processed data into Vertex AI Search datastore
-    ingest_data(
+    ingest_data_task = ingest_data(
         project_id=project_id,
         data_store_region=data_store_region,
-        input_files=processed_data.output,
+        input_files=process_data_task.output,
         data_store_id=data_store_id,
         embedding_column="embedding",
-    ).set_retry(num_retries=2)
-{% elif cookiecutter.datastore_type == "vertex_ai_vector_search" %}
-    # Ingest the processed data into Vertex AI Vector Search
-    ingest_data(
-        project_id=project_id,
-        location=location,
-        vector_search_index=vector_search_index,
-        vector_search_index_endpoint=vector_search_index_endpoint,
-        vector_search_data_bucket_name=vector_search_data_bucket_name,
-        input_table=processed_data.output,
-        schedule_time=dsl.PIPELINE_JOB_SCHEDULE_TIME_UTC_PLACEHOLDER,
-        is_incremental=False,
-        look_back_days=look_back_days,
-        ingestion_batch_size=ingestion_batch_size,
-    ).set_retry(num_retries=2)
-{% endif %}
+    ).set_retry(num_retries=2).set_env_variable("PIP_DISABLE_PIP_VERSION_CHECK", "1")

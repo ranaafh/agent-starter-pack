@@ -23,8 +23,8 @@ It leverages BigQuery for data processing. We also suggest looking at remote fun
 from kfp.dsl import Dataset, Output, component
 
 @component(
-    base_image="python:3.11-slim" 
-    # base_image="us-docker.pkg.dev/production-ai-template/starter-pack/data_processing:0.2"
+    base_image="us-docker.pkg.dev/production-ai-template/starter-pack/data_processing:0.2",
+    packages_to_install=[]  # No need to install packages as they're in the base image
 )
 def process_data(
     project_id: str,
@@ -207,7 +207,6 @@ def process_data(
                 json.dumps(
                     {
                         "id": row["chunk_id"],
-                        embedding_column: row["embedding"],
                         "content": row["text_chunk"],
                         "source_title": row["title"],
                         "source_page_id": row["id"],
@@ -218,7 +217,19 @@ def process_data(
                 + "\n"
             )
 
+    # Write the JSONL file path to file_list.txt for downstream components
+    file_list_path = out_dir / "file_list.txt"
+    with file_list_path.open("w", encoding="utf-8") as f:
+        f.write(str(jsonl_path))
+
     logging.info("Exported %d chunks to %s", len(df), jsonl_path)
+    # Set the output_files.uri to the correct GCS URI for the JSONL file
+    if output_files.uri.rstrip("/").endswith("output_files"):
+        output_files.uri = output_files.uri.rstrip("/") + "/" + jsonl_path.name
+    else:
+        output_files.uri = output_files.uri.rstrip("/") + "/output_files/" + jsonl_path.name
+    logging.info("Set output_files.uri to %s", output_files.uri)
+    logging.info("Wrote file list to %s", file_list_path)
 
 
     
