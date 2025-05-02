@@ -203,19 +203,17 @@ def process_data(
 
     with jsonl_path.open("w", encoding="utf-8") as f:
         for _, row in df.iterrows():
-            f.write(
-                json.dumps(
-                    {
-                        "id": row["chunk_id"],
-                        "content": row["text_chunk"],
-                        "source_title": row["title"],
-                        "source_page_id": row["id"],
-                        "creation_timestamp": row["creation_timestamp"].isoformat(),
-                    },
-                    ensure_ascii=False,
-                )
-                + "\n"
-            )
+            doc = {
+                "id": row["chunk_id"],
+                "json_data": json.dumps({
+                    embedding_column: row["embedding"],
+                    "content": row["text_chunk"],
+                    "source_title": row["title"],
+                    "source_page_id": row["id"],
+                    "creation_timestamp": row["creation_timestamp"].isoformat(),
+                }, ensure_ascii=False)
+            }
+            f.write(json.dumps(doc, ensure_ascii=False) + "\n")
 
     # Write the JSONL file path to file_list.txt for downstream components
     file_list_path = out_dir / "file_list.txt"
