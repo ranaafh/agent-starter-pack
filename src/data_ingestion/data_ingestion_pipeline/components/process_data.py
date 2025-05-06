@@ -30,77 +30,73 @@ def process_data(
     project_id: str,
     schedule_time: str,
     output_files: Output[Dataset],
-    confluence_domain: str,      # NEW
-    confluence_email: str,       # NEW
-    confluence_token: str,       # NEW (store in Secret Manager!)
-    confluence_page_ids: str,    # NEW
-    is_incremental: bool = True,
-    look_back_days: int = 1,
+    confluence_domain: str,
+    confluence_email: str,
+    confluence_token: str,
+    confluence_space_key: str = "",      # NEW
+    confluence_page_ids: str = "",       # Still supported
     chunk_size: int = 1500,
     chunk_overlap: int = 20,
-    destination_dataset: str = "stackoverflow_data",
-    destination_table: str = "incremental_questions_embeddings",
-    deduped_table: str = "questions_embeddings",
     location: str = "us-central1",
     embedding_column: str = "embedding",
+    is_incremental: bool = True,  # Added back for future use
 ) -> None:
-    """Process StackOverflow questions and answers by:
-    1. Fetching data from BigQuery
-    2. Converting HTML to markdown
+    """Process Confluence pages by:
+    1. Fetching all page IDs from a space (if space key provided) or using provided page IDs
+    2. Fetching page content
     3. Splitting text into chunks
     4. Generating embeddings
-    5. Storing results in BigQuery
-    6. Exporting to JSONL
+    5. Exporting to JSONL
 
     Args:
         output_files: Output dataset path
-        is_incremental: Whether to process only recent data
-        look_back_days: Number of days to look back for incremental processing
         chunk_size: Size of text chunks
         chunk_overlap: Overlap between chunks
-        destination_dataset: BigQuery dataset for storing results
-        destination_table: Table for storing incremental results
-        deduped_table: Table for storing deduplicated results
-        location: BigQuery location
+        confluence_space_key: Confluence space key (if provided, fetch all page IDs in this space)
+        confluence_page_ids: Comma-separated list of Confluence page IDs (used if space key not provided)
+        is_incremental: (Not currently used) Intended for future incremental ingestion support.
+        schedule_time: (Not currently used) Intended for future incremental ingestion support.
+        ... other params ...
     """
     import logging
     from datetime import datetime, timedelta
-
-    import backoff
-    import google.api_core.exceptions
-    from langchain.text_splitter import RecursiveCharacterTextSplitter
-    # from markdownify import markdownify
     import requests
     from bs4 import BeautifulSoup
     import pandas as pd
+    import backoff
+    import google.api_core.exceptions
+    from langchain.text_splitter import RecursiveCharacterTextSplitter
 
-    # Initialize logging
     logging.basicConfig(level=logging.INFO)
 
-    # Set date range for data fetch
-    schedule_time_dt: datetime = datetime.fromisoformat(
-        schedule_time.replace("Z", "+00:00")
-    )
-    if schedule_time_dt.year == 1970:
-        logging.warning(
-            "Pipeline schedule not set. Setting schedule_time to current date."
-        )
-        schedule_time_dt = datetime.now()
+    def get_all_page_ids_for_space(domain, email, token, space_key):
+        url = f"https://{domain}/wiki/rest/api/content"
+        auth = (email, token)
+        limit = 50
+        start = 0
+        page_ids = []
+        while True:
+            params = {
+                "spaceKey": space_key,
+                "type": "page",
+                "limit": limit,
+                "start": start,
+            }
+            response = requests.get(url, params=params, auth=auth)
+            response.raise_for_status()
+            data = response.json()
+            results = data.get("results", [])
+            if not results:
+                break
+            for page in results:
+                page_ids.append(page["id"])
+            if len(results) < limit:
+                break
+            start += limit
+        logging.info(f"Fetched {len(page_ids)} page IDs from space '{space_key}'")
+        return page_ids
 
-    # Note: The following line sets the schedule time 5 years back to allow sample data to be present.
-    # For your use case, please comment out the following line to use the actual schedule time.
-    schedule_time_dt = schedule_time_dt - timedelta(days=5 * 365)
-
-    START_DATE: datetime = schedule_time_dt - timedelta(
-        days=look_back_days
-    )  # Start date for data processing window
-    END_DATE: datetime = schedule_time_dt  # End date for data processing window
-
-    logging.info(f"Date range set: START_DATE={START_DATE}, END_DATE={END_DATE}")
-    
-    def fetch_confluence_pages(
-        domain: str, email: str, token: str, page_ids: list[str]
-    ) -> pd.DataFrame:
+    def fetch_confluence_pages(domain: str, email: str, token: str, page_ids: list[str]) -> pd.DataFrame:
         rows = []
         auth = (email, token)
         for pid in page_ids:
@@ -122,14 +118,20 @@ def process_data(
             )
         return pd.DataFrame(rows)
 
-    # optional -- will investigate later!
-    # def convert_html_to_markdown(html: str) -> str:
-    #     """Convert HTML into Markdown for easier parsing and rendering after LLM response."""
-    #     return markdownify(html).strip()
+    # --- Parameter handling ---
+    if confluence_space_key:
+        logging.info(f"Fetching all page IDs for space: {confluence_space_key}")
+        page_ids = get_all_page_ids_for_space(
+            confluence_domain, confluence_email, confluence_token, confluence_space_key
+        )
+    elif confluence_page_ids:
+        logging.info(f"Using provided page IDs: {confluence_page_ids}")
+        page_ids = [p.strip() for p in confluence_page_ids.split(",") if p.strip()]
+    else:
+        raise ValueError("Either confluence_space_key or confluence_page_ids must be provided.")
 
     # Fetch and preprocess data
     logging.info("Fetching and preprocessing data...")
-    page_ids = [p.strip() for p in confluence_page_ids.split(",") if p.strip()]
     df_raw = fetch_confluence_pages(
         confluence_domain, confluence_email, confluence_token, page_ids
     )
@@ -152,19 +154,19 @@ def process_data(
 
     # Create chunk IDs and explode chunks into rows
     logging.info("Creating chunk IDs and exploding chunks into rows...")
-    chunk_ids = [str(i) for txt in df["text_chunk"] for i in range(len(txt))]
+    # First, create a list of tuples with (page_id, chunk_number)
+    chunk_info = []
+    for _, row in df.iterrows():
+        page_id = row["id"]
+        num_chunks = len(row["text_chunk"])
+        chunk_info.extend([(page_id, i) for i in range(num_chunks)])
+    
+    # Now explode the DataFrame
     df = df.explode("text_chunk").reset_index(drop=True)
-    df["chunk_id"] = df["id"].astype("string") + "__" + chunk_ids
+    
+    # Create chunk IDs using the pre-calculated chunk info
+    df["chunk_id"] = [f"{page_id}__{chunk_num}" for page_id, chunk_num in chunk_info]
     logging.info("Chunk IDs created and chunks exploded.")
-#     print(df.head(3))          # see the first 3 exploded rows
-    
-    
-#     # --- show the first 500 chars of full_text_md for 3 rows ---
-#     print("\n--- full_text_md for first 3 rows ---")
-#     for i, txt in enumerate(df["full_text_md"].head(3), start=1):
-#         snippet = txt[:500].replace("\n", " ") + "..."
-#         print(f"{i}. {snippet}\n")
-    # return                      # <--- temporary early exit
 
     from langchain_google_vertexai import VertexAIEmbeddings
     import json, pathlib, uuid
@@ -244,8 +246,15 @@ def process_data(
 #         ["887816193"]                         #  ← COMMA added ^^^
 #     )
 #     print(df.head())
-
+if __name__ == "__main__":
+    import types
+    from kfp.dsl import Dataset
     
+    # Create a simple output dataset
+    output_files = types.SimpleNamespace(
+        path="/tmp/confluence_test",
+        uri="gs://prj-00-np-002-genai-f737-pipeline-root/test_output"
+    )
 # import types   # add to your imports
 
 # # … keep everything in the file exactly as you have it …
@@ -260,4 +269,20 @@ def process_data(
 #         confluence_email="rana.hashemi@badal.io",
 #         #add pat,
 #         confluence_page_ids="887816193",
-#     )
+#     ) 
+    # Call process_data with all required parameters
+    process_data.python_func(
+        project_id="prj-00-np-002-genai-f737",
+        schedule_time="2025-04-30T00:00:00Z",
+        output_files=output_files,
+        confluence_domain="badal.atlassian.net",
+        confluence_email="rana.hashemi@badal.io",
+       # add pat here
+        confluence_space_key="BE",  # Test with space key
+        # confluence_page_ids="887816193",  # Commented out since we're using space key
+        chunk_size=1500,
+        chunk_overlap=20,
+        location="us-central1",
+        embedding_column="embedding",
+        is_incremental=True
+    )
