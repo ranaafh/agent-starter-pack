@@ -154,7 +154,12 @@ def process_data(
 
     # Create chunk IDs and explode chunks into rows
     logging.info("Creating chunk IDs and exploding chunks into rows...")
-    # First, create a list of tuples with (page_id, chunk_number)
+    
+    # Filter out rows with empty chunks
+    df = df[df["text_chunk"].apply(len) > 0].copy()
+    logging.info(f"DataFrame shape after filtering empty chunks: {df.shape}")
+    
+    # Create chunk IDs and explode
     chunk_info = []
     for _, row in df.iterrows():
         page_id = row["id"]
@@ -163,6 +168,7 @@ def process_data(
     
     # Now explode the DataFrame
     df = df.explode("text_chunk").reset_index(drop=True)
+    logging.info(f"DataFrame shape after explosion: {df.shape}")
     
     # Create chunk IDs using the pre-calculated chunk info
     df["chunk_id"] = [f"{page_id}__{chunk_num}" for page_id, chunk_num in chunk_info]
@@ -277,7 +283,7 @@ if __name__ == "__main__":
         output_files=output_files,
         confluence_domain="badal.atlassian.net",
         confluence_email="rana.hashemi@badal.io",
-       # add pat here
+        # add pat here 
         confluence_space_key="BE",  # Test with space key
         # confluence_page_ids="887816193",  # Commented out since we're using space key
         chunk_size=1500,
