@@ -244,51 +244,29 @@ def process_data(
 # ------------------------------------------------------------------
 # Quick local test – leave this at the very bottom of process_data.py
 # ------------------------------------------------------------------
+
 # if __name__ == "__main__":
-#     df = fetch_confluence_pages(
-#         "badal.atlassian.net",                # domain
-#         "rana.hashemi@badal.io",              # e-mail
-#         #add pat
-#         ["887816193"]                         #  ← COMMA added ^^^
-#     )
-#     print(df.head())
-if __name__ == "__main__":
-    import types
-    from kfp.dsl import Dataset
+#     import types
+#     from kfp.dsl import Dataset
     
-    # Create a simple output dataset
-    output_files = types.SimpleNamespace(
-        path="/tmp/confluence_test",
-        uri="gs://prj-00-np-002-genai-f737-pipeline-root/test_output"
-    )
-# import types   # add to your imports
+#     # Create a simple output dataset
+#     output_files = types.SimpleNamespace(
+#         path="/tmp/confluence_test",
+#         uri="gs://prj-00-np-002-genai-f737-pipeline-root/test_output"
+#     )
 
-# # … keep everything in the file exactly as you have it …
-
-# # ---------------- quick local test -----------------
-# if __name__ == "__main__":
-#     process_data.python_func(             # <-- call the raw Python fn
-#         project_id="prj-00-np-002-genai-f737",
-#         schedule_time="2025-04-30T00:00:00Z",
-#         output_files=types.SimpleNamespace(path="/tmp"),  # simple stub
-#         confluence_domain="badal.atlassian.net",
-#         confluence_email="rana.hashemi@badal.io",
-#         #add pat,
-#         confluence_page_ids="887816193",
-#     ) 
-    # Call process_data with all required parameters
-    process_data.python_func(
-        project_id="prj-00-np-002-genai-f737",
-        schedule_time="2025-04-30T00:00:00Z",
-        output_files=output_files,
-        confluence_domain="badal.atlassian.net",
-        confluence_email="rana.hashemi@badal.io",
-        # add pat here 
-        confluence_space_key="BE",  # Test with space key
-        # confluence_page_ids="887816193",  # Commented out since we're using space key
-        chunk_size=1500,
-        chunk_overlap=20,
-        location="us-central1",
-        embedding_column="embedding",
-        is_incremental=True
-    )
+    # process_data.python_func(
+    #     project_id="prj-00-np-002-genai-f737",
+    #     schedule_time="2025-04-30T00:00:00Z",
+    #     output_files=output_files,
+    #     confluence_domain="badal.atlassian.net",
+    #     confluence_email="rana.hashemi@badal.io",
+    #     # add pat here 
+    #     confluence_space_key="BE",  # Test with space key
+    #     # confluence_page_ids="887816193",  # Commented out since we're using space key
+    #     chunk_size=1500,
+    #     chunk_overlap=20,
+    #     location="us-central1",
+    #     embedding_column="embedding",
+    #     is_incremental=True
+    # )
