@@ -67,27 +67,54 @@ def retrieve_docs(query: str) -> str:
         query (str): The user's question or search query.
 
     Returns:
-        str: Formatted string containing relevant document content retrieved and ranked based on the query.
+        str: Formatted string containing relevant document content.
+             Returns a specific string or marker if no relevant docs are found or an error occurs.
     """
+    retrieved_docs = [] # Initialize to an empty list
     try:
         # Use the retriever to fetch relevant documents based on the query
+        print(f"Attempting to retrieve documents for query: '{query}'") # Log the start of retrieval
         retrieved_docs = retriever.invoke(query)
+        print(f"Retrieved {len(retrieved_docs)} documents for query: '{query}'") # Log number of documents retrieved
+
+        # Check if retrieval returned any documents
+        if not retrieved_docs:
+            print(f"No documents retrieved for query: '{query}'") # Log this event
+            return "NO_RELEVANT_DOCUMENTS_FOUND" # Return a specific marker
+
         # Re-rank docs with Vertex AI Rank for better relevance
+        # This call will only happen if retrieved_docs is NOT empty
         ranked_docs = compressor.compress_documents(
             documents=retrieved_docs, query=query
         )
+        print(f"Ranked down to {len(ranked_docs)} documents after compression for query: '{query}'") # Log number of documents after ranking
+
+        # Optional: Check if ranking returned any documents (less common, but possible)
+        if not ranked_docs:
+             print(f"No documents remained after ranking for query: '{query}'") # Log this event
+             return "NO_RELEVANT_DOCUMENTS_FOUND" # Return the same marker
+
+
         # Format ranked documents into a consistent structure for LLM consumption
         formatted_docs = format_docs.format(docs=ranked_docs)
-    except Exception as e:
-        return f"Calling retrieval tool with query:\n\n{query}\n\nraised the following error:\n\n{type(e)}: {e}"
+        # print(f"Formatted documents: {formatted_docs}") # Optional: Log the formatted docs (can be verbose)
 
+    except Exception as e:
+        # This block now catches other errors (network, API issues other than empty records)
+        print(f"Error calling retrieval tool with query: '{query}'. Error: {type(e).__name__}: {e}") # Log the error internally
+        # Return a different marker or handle this error type separately if needed
+        return "RETRIEVAL_TOOL_ERROR" # Signal failure to the agent
+
+    print(f"Successfully retrieved, ranked, and formatted documents for query: '{query}'") # Log successful completion
     return formatted_docs
 
 
 instruction = """You are an AI assistant for question-answering tasks.
 Answer to the best of your ability using the context provided.
 Leverage the Tools you are provided to answer questions.
-If you already know the answer to a question, you can respond directly without using the tools."""
+If you already know the answer to a question, and if asked outside of the context provided,you can respond directly without using the tools.
+In case of an error, inform the user that you could not retieve the information. 
+"""
 
 root_agent = Agent(
     name="root_agent",
