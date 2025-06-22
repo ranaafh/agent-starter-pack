@@ -15,8 +15,13 @@ playground:
 
 backend:
 	# Export dependencies to requirements file using uv export.
-	uv export --no-hashes --no-sources --no-header --no-dev --no-emit-project --no-annotate --frozen > .requirements.txt 2>/dev/null || \
-	uv export --no-hashes --no-sources --no-header --no-dev --no-emit-project --frozen > .requirements.txt && uv run app/agent_engine_app.py
+	uv export --no-hashes --no-header --no-dev --no-emit-project --no-annotate --frozen > .requirements.txt 2>/dev/null || \
+	uv export --no-hashes --no-header --no-dev --no-emit-project --frozen > .requirements.txt && \
+	uv run app/agent_engine_app.py --set-env-vars "DATA_STORE_ID=my-agentic-rag-datastore,DATA_STORE_REGION=us"
+
+deploy-ui:
+	PROJECT_ID=$$(gcloud config get-value project) && \
+	gcloud builds submit --config cloudbuild.yaml --substitutions=_PROJECT_ID=$$PROJECT_ID .
 
 setup-dev-env:
 	PROJECT_ID=$$(gcloud config get-value project) && \
