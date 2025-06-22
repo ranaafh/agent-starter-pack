@@ -19,6 +19,7 @@ backend:
 	uv export --no-hashes --no-header --no-dev --no-emit-project --frozen > .requirements.txt && \
 	uv run app/agent_engine_app.py --set-env-vars "DATA_STORE_ID=my-agentic-rag-datastore,DATA_STORE_REGION=us"
 
+# ui deployment not tested, cloudbuild.yaml and dockerfile.streamlit not added, committed.
 deploy-ui:
 	PROJECT_ID=$$(gcloud config get-value project) && \
 	gcloud builds submit --config cloudbuild.yaml --substitutions=_PROJECT_ID=$$PROJECT_ID .
